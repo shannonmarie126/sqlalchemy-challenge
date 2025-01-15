@@ -23,9 +23,6 @@ Base.prepare(autoload_with=engine)
 Stations=Base.classes.station
 Measurements=Base.classes.measurement
 
-# Create our session (link) from Python to the DB
-# session=Session(engine)
-
 #################################################
 # Flask Setup
 #################################################
@@ -45,7 +42,8 @@ def home_page():
         "/api/v1.0/precipitation<br/>"
         "/api/v1.0/stations<br/>"
         "/api/v1.0/tobs<br/>"
-        "/api/v1.0/<start>"
+        "/api/v1.0/<start><br/>"
+        "/api/v1.0/<start>/<end>"
     )
 @app.route("/api/v1.0/precipitation")
 def precipitation():
@@ -65,8 +63,9 @@ def precipitation():
         precip_data[date].append(prcp)
 
 # Convert the dictionary to a list of dictionaries for JSON response
-    precip_data_list = [{'date': date, 'prcp': prcp}
-                         for date, prcp in precip_data.items()]
+    precip_data_list=[]
+    for date, prcp in precip_data.items():
+        precip_data_list.append({'date': date, 'prcp': prcp})
     return jsonify(precip_data_list)
 
 
@@ -96,13 +95,36 @@ def temperatures():
         temp_last_year.append(temp_dict)
     return jsonify(temp_last_year)
 
-# @app.route("/api/v1.0/<start>")
-# def date():
-#     session=Session(engine)
-#     results=
-#     session.close()
-#     return 
+@app.route("/api/v1.0/<start>")
+@app.route("/api/v1.0/<start>/<end>")
+def date_range(start,end=None):
+    session=Session(engine)
+    start_date=dt.datetime.strptime(start,'%Y-%m-%d')
+    sel=[func.min(Measurements.tobs),
+        func.avg(Measurements.tobs),
+        func.max(Measurements.tobs)]
+    if end:
 
+        start_range_date=start_date
+        end_range_date=dt.datetime.strptime(end,'%Y-%m-%d')
+        results=session.query(*sel).filter(Measurements.date>=start_range_date).\
+        filter(Measurements.date<=end_range_date).all()
+    else:
+        results=session.query(*sel).filter(Measurements.date==start_date).all()
+    session.close()
+    
+    if results:
+        temp_stats_list=[]
+        for tmin,tavg,tmax in results:
+            temp_stats={}
+            temp_stats['tmin']=tmin
+            temp_stats['tavg']=tavg
+            temp_stats['tmax']=tmax
+            temp_stats_list.append(temp_stats)
+        return jsonify(temp_stats_list)
+    
+    else:
+        return (f"Error, no data for date range selected")
 
 
 if __name__ == '__main__':
