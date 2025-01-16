@@ -42,8 +42,8 @@ def home_page():
         "/api/v1.0/precipitation<br/>"
         "/api/v1.0/stations<br/>"
         "/api/v1.0/tobs<br/>"
-        "/api/v1.0/<start><br/>"
-        "/api/v1.0/<start>/<end>"
+        "/api/v1.0/<start>start_date: insert date in YYYY-mm-dd<br/>"
+        "/api/v1.0/<start>start_date: insert date in YYYY-mm-dd/<end>end_date: insert date in YYYY-mm-dd"
     )
 @app.route("/api/v1.0/precipitation")
 def precipitation():
@@ -104,13 +104,12 @@ def date_range(start,end=None):
         func.avg(Measurements.tobs),
         func.max(Measurements.tobs)]
     if end:
-
         start_range_date=start_date
         end_range_date=dt.datetime.strptime(end,'%Y-%m-%d')
         results=session.query(*sel).filter(Measurements.date>=start_range_date).\
         filter(Measurements.date<=end_range_date).all()
     else:
-        results=session.query(*sel).filter(Measurements.date==start_date).all()
+        results=session.query(*sel).filter(Measurements.date>=start_date).all()
     session.close()
     
     if results:
@@ -121,8 +120,8 @@ def date_range(start,end=None):
             temp_stats['tavg']=tavg
             temp_stats['tmax']=tmax
             temp_stats_list.append(temp_stats)
-        return jsonify(temp_stats_list)
     
+        return jsonify(temp_stats_list)
     else:
         return (f"Error, no data for date range selected")
 
