@@ -20,8 +20,8 @@ Base = automap_base()
 Base.prepare(autoload_with=engine)
 
 # Save references to each table
-Stations=Base.classes.station
-Measurements=Base.classes.measurement
+stations=Base.classes.station
+measurements=Base.classes.measurement
 
 #################################################
 # Flask Setup
@@ -33,6 +33,7 @@ app=Flask(__name__)
 # Flask Routes
 #################################################
 
+# home page route with all routes listed and explanation of datetime formatting
 @app.route("/")
 def home_page():
     """List all available api routes."""
@@ -45,24 +46,29 @@ def home_page():
         "/api/v1.0/<start>start_date: insert date in YYYY-mm-dd<br/>"
         "/api/v1.0/<start>start_date: insert date in YYYY-mm-dd/<end>end_date: insert date in YYYY-mm-dd"
     )
+
+#
 @app.route("/api/v1.0/precipitation")
 def precipitation():
+    """Return precipitation data for the last year of data"""
     session=Session(engine)
-    latest_date=session.query(Measurements.date).order_by(Measurements.date.desc()).first()[0]
+    #query the latest date and calculate date for one year prior to that
+    latest_date=session.query(measurements.date).order_by(measurements.date.desc()).first()[0]
     latest_date_obj = dt.datetime.strptime(latest_date, '%Y-%m-%d').date()
     one_year_prior = latest_date_obj - dt.timedelta(days=365)
-    results=session.query(Measurements.date,Measurements.prcp).\
-    filter(func.strftime(Measurements.date>=one_year_prior)).\
-    order_by(Measurements.date).all()
+    #query the year of data including the date for a key
+    results=session.query(measurements.date,measurements.prcp).\
+    filter(func.strftime(measurements.date>=one_year_prior)).\
+    order_by(measurements.date).all()
     session.close()
-   
+   #create the date key 
     precip_data = {}
     for date, prcp in results:
         if date not in precip_data:
             precip_data[date] = []
         precip_data[date].append(prcp)
 
-# Convert the dictionary to a list of dictionaries for JSON response
+# Add the precipitations for each date and convert to JSON for the return
     precip_data_list=[]
     for date, prcp in precip_data.items():
         precip_data_list.append({'date': date, 'prcp': prcp})
@@ -71,22 +77,28 @@ def precipitation():
 
 @app.route("/api/v1.0/stations")
 def stations():
+    """Return a list of all the stations"""
     session=Session(engine)
-    results=session.query(Stations.station).all()
+    #query all station IDs
+    results=session.query(stations.station).all()
     session.close()
+    #change results to a list then jsonify
     stations_list=list(np.ravel(results))
     return jsonify(stations_list)
 
 @app.route("/api/v1.0/tobs")
 def temperatures():
+    """Return temperature observations for the last year from the most active station"""
     session=Session(engine)
-    latest_date=session.query(Measurements.date).order_by(Measurements.date.desc()).first()[0]
+    latest_date=session.query(measurements.date).order_by(measurements.date.desc()).first()[0]
     latest_date_obj = dt.datetime.strptime(latest_date, '%Y-%m-%d').date()
     one_year_prior = latest_date_obj - dt.timedelta(days=365)
-    results=session.query(Measurements.date,Measurements.tobs).\
-    filter((Measurements.station=='USC00519281')).\
-    filter(func.strftime(Measurements.date>=one_year_prior)).all()
+    #query temp for most active station for date range 
+    results=session.query(measurements.date,measurements.tobs).\
+    filter((measurements.station=='USC00519281')).\
+    filter(func.strftime(measurements.date>=one_year_prior)).all()
     session.close()
+    #create a list of dictionaries to hold date and temp and return jsonified result
     temp_last_year=[]
     for date,temp in results:
         temp_dict={}
@@ -98,20 +110,25 @@ def temperatures():
 @app.route("/api/v1.0/<start>")
 @app.route("/api/v1.0/<start>/<end>")
 def date_range(start,end=None):
+    """Return min, avg, max for a specified date range"""
     session=Session(engine)
     start_date=dt.datetime.strptime(start,'%Y-%m-%d')
-    sel=[func.min(Measurements.tobs),
-        func.avg(Measurements.tobs),
-        func.max(Measurements.tobs)]
+    #define selection criteria
+    sel=[func.min(measurements.tobs),
+        func.avg(measurements.tobs),
+        func.max(measurements.tobs)]
+    #check for end date being provided and if so then use for the query
     if end:
         start_range_date=start_date
         end_range_date=dt.datetime.strptime(end,'%Y-%m-%d')
-        results=session.query(*sel).filter(Measurements.date>=start_range_date).\
-        filter(Measurements.date<=end_range_date).all()
+        results=session.query(*sel).filter(measurements.date>=start_range_date).\
+        filter(measurements.date<=end_range_date).all()
+    #query for start date to last day in data set 
     else:
-        results=session.query(*sel).filter(Measurements.date>=start_date).all()
+        results=session.query(*sel).filter(measurements.date>=start_date).all()
     session.close()
     
+    #return temp stats as a dictionary and jsonify it in the return
     if results:
         temp_stats_list=[]
         for tmin,tavg,tmax in results:
@@ -122,6 +139,7 @@ def date_range(start,end=None):
             temp_stats_list.append(temp_stats)
     
         return jsonify(temp_stats_list)
+    #error message for dates not in the data set 
     else:
         return (f"Error, no data for date range selected")
 
